@@ -1,0 +1,9 @@
+# Logs & Scratch files
+*.log
+push_err.txt
+push_out.txt
+push_test.bat
+
+# OS files
+Thumbs.db
+.DS_Store
