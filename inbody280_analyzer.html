@@ -5,6 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>InBody 280 프리미엄 체성분 분석 & MD 리포트 시스템</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <!-- ✅ Supabase 연결 설정 - 여기에 본인 프로젝트 값을 입력하세요 -->
+  <script>
+    const SUPABASE_URL  = 'YOUR_SUPABASE_URL';   // 예: https://abcxyz.supabase.co
+    const SUPABASE_KEY  = 'YOUR_SUPABASE_ANON_KEY'; // 예: eyJhbGci...
+    const TABLE_NAME    = 'inbody_records';
+
+    // URL/KEY가 채워져 있으면 클라이언트 초기화
+    const supabase = (SUPABASE_URL !== 'YOUR_SUPABASE_URL')
+      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+      : null;
+  </script>
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap');
     body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; }
@@ -60,6 +75,22 @@
           <button onclick="loadPreset('SKINNY_FAT')" class="px-2.5 py-1 rounded-md font-medium text-slate-600 hover:text-slate-900 hover:bg-white transition">마른비만</button>
         </div>
 
+        <!-- Supabase 연결 상태 표시 -->
+        <div id="dbStatusBadge" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold border bg-slate-100 text-slate-400 border-slate-200 flex items-center gap-1">
+          <span id="dbStatusDot" class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>
+          <span id="dbStatusText">DB 미연결</span>
+        </div>
+
+        <!-- 기록 저장 버튼 -->
+        <button onclick="saveRecord()" id="saveBtn" class="px-3 py-1.5 rounded-lg border border-emerald-400 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed">
+          💾 기록 저장
+        </button>
+
+        <!-- 기록 목록 보기 버튼 -->
+        <button onclick="toggleRecordsPanel()" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
+          📋 기록 목록
+        </button>
+
         <button onclick="window.print()" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
           🖨️ A4 결과지 인쇄
         </button>
@@ -68,6 +99,45 @@
         </button>
       </div>
     </header>
+
+    <!-- =================== Supabase 기록 목록 패널 =================== -->
+    <div id="recordsPanel" class="hidden bg-white border border-slate-200 rounded-2xl p-5 shadow-sm no-print">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+          <span class="w-2 h-4 bg-indigo-600 rounded-full"></span>
+          📦 저장된 측정 기록 <span id="recordCount" class="text-xs text-slate-400 font-normal ml-1"></span>
+        </h2>
+        <div class="flex items-center gap-2">
+          <button onclick="loadRecords()" class="px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-600 transition">🔄 새로고침</button>
+          <button onclick="toggleRecordsPanel()" class="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-slate-50 text-slate-500 hover:text-slate-700 transition">✕ 닫기</button>
+        </div>
+      </div>
+      <!-- 로딩/에러/빈 상태 -->
+      <div id="recordsState" class="text-center py-8 text-sm text-slate-400">목록을 불러오는 중...</div>
+      <!-- 테이블 -->
+      <div id="recordsTableWrap" class="hidden overflow-x-auto">
+        <table class="w-full text-xs text-left">
+          <thead>
+            <tr class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+              <th class="p-2.5">측정일시</th>
+              <th class="p-2.5">성별</th>
+              <th class="p-2.5">연령</th>
+              <th class="p-2.5">신장</th>
+              <th class="p-2.5">체중(kg)</th>
+              <th class="p-2.5">골격근량(kg)</th>
+              <th class="p-2.5">체지방률(%)</th>
+              <th class="p-2.5">BMI</th>
+              <th class="p-2.5">내장지방</th>
+              <th class="p-2.5">인바디점수</th>
+              <th class="p-2.5">체형</th>
+              <th class="p-2.5 text-center">불러오기</th>
+              <th class="p-2.5 text-center">삭제</th>
+            </tr>
+          </thead>
+          <tbody id="recordsTableBody" class="divide-y divide-slate-100 text-slate-700"></tbody>
+        </table>
+      </div>
+    </div>
 
     <!-- 메인 대시보드 레이아웃: [좌측: 결과지 사진 업로드 & 대조 뷰어 (3.5 cols)] | [우측: 공식 인바디 280 결과지 뷰 & 실시간 계산 (8.5 cols)] -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -830,8 +900,227 @@
       URL.revokeObjectURL(url);
     }
 
-    // 초기 계산 실행
+    // ───────────────────────────────────────────
+    // ▶ Supabase 연동 함수 모음
+    // ───────────────────────────────────────────
+
+    /** 현재 계산 결과를 스냅샷으로 반환 */
+    function getCurrentSnapshot() {
+      const gender  = document.getElementById('gender').value;
+      const age     = parseInt(document.getElementById('age').value) || 0;
+      const height  = parseFloat(document.getElementById('height').value) || 0;
+      const weight  = parseFloat(document.getElementById('weight').value) || 0;
+      const smm     = parseFloat(document.getElementById('smm').value) || 0;
+      const bfm     = parseFloat(document.getElementById('bfm').value) || 0;
+      const score   = parseInt(document.getElementById('score').value) || 0;
+      const vfl     = parseInt(document.getElementById('vfl').value) || 0;
+      const tbw     = parseFloat(document.getElementById('tbw').value) || 0;
+      const protein = parseFloat(document.getElementById('protein').value) || 0;
+      const mineral = parseFloat(document.getElementById('mineral').value) || 0;
+      const armR    = parseFloat(document.getElementById('armR').value) || 0;
+      const armL    = parseFloat(document.getElementById('armL').value) || 0;
+      const trunk   = parseFloat(document.getElementById('trunk').value) || 0;
+      const legR    = parseFloat(document.getElementById('legR').value) || 0;
+      const legL    = parseFloat(document.getElementById('legL').value) || 0;
+
+      const hM  = height / 100;
+      const bmi = parseFloat((weight / (hM * hM)).toFixed(1));
+      const pbf = parseFloat(((bfm / weight) * 100).toFixed(1));
+      const ffm = weight - bfm;
+      const bmr = Math.round(370 + 21.6 * ffm);
+      const tdee = Math.round(bmr * 1.4);
+
+      // CID 판정 (calculate()와 동일한 로직)
+      const idealW = gender === 'male' ? (height - 100) * 0.9 : (height - 100) * 0.85;
+      const idealS = gender === 'male' ? idealW * 0.45 : idealW * 0.38;
+      const idealB = gender === 'male' ? idealW * 0.15 : idealW * 0.23;
+      const pctW = Math.min(160, Math.max(50, Math.round((weight / idealW) * 100)));
+      const pctS = Math.min(160, Math.max(50, Math.round((smm   / idealS) * 100)));
+      const pctB = Math.min(220, Math.max(40, Math.round((bfm   / idealB) * 100)));
+      let cid_type = 'I';
+      if      (pctS < pctW - 8 || pctS < pctB - 12) cid_type = 'C';
+      else if (pctS > pctW + 6 && pctS > pctB)       cid_type = 'D';
+
+      return {
+        gender, age, height_cm: height, weight_kg: weight,
+        smm_kg: smm, bfm_kg: bfm, tbw_l: tbw, protein_kg: protein, mineral_kg: mineral,
+        bmi, pbf_pct: pbf, vfl_level: vfl, inbody_score: score,
+        cid_type, bmr_kcal: bmr, tdee_kcal: tdee,
+        arm_r_kg: armR, arm_l_kg: armL, trunk_kg: trunk, leg_r_kg: legR, leg_l_kg: legL,
+        markdown_report: document.getElementById('markdownOutput').value
+      };
+    }
+
+    /** Supabase 연결 상태 UI 업데이트 */
+    function updateDbStatusUI(connected) {
+      const dot  = document.getElementById('dbStatusDot');
+      const text = document.getElementById('dbStatusText');
+      const badge = document.getElementById('dbStatusBadge');
+      if (connected) {
+        dot.className   = 'w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block';
+        text.textContent = 'DB 연결됨';
+        badge.className  = badge.className.replace('bg-slate-100 text-slate-400 border-slate-200',
+                                                    'bg-emerald-50 text-emerald-700 border-emerald-300');
+      } else {
+        dot.className   = 'w-1.5 h-1.5 rounded-full bg-rose-400 inline-block';
+        text.textContent = 'DB 미연결';
+        badge.className  = badge.className.replace('bg-emerald-50 text-emerald-700 border-emerald-300',
+                                                    'bg-slate-100 text-slate-400 border-slate-200');
+      }
+    }
+
+    /** 앱 시작 시 Supabase 연결 확인 */
+    async function checkDbConnection() {
+      if (!supabase) { updateDbStatusUI(false); return; }
+      try {
+        const { error } = await supabase.from(TABLE_NAME).select('id').limit(1);
+        updateDbStatusUI(!error);
+        if (error) console.warn('[Supabase] 연결 확인 실패:', error.message);
+      } catch(e) {
+        updateDbStatusUI(false);
+        console.warn('[Supabase] 연결 오류:', e);
+      }
+    }
+
+    /** 현재 수치를 Supabase에 저장 */
+    async function saveRecord() {
+      if (!supabase) {
+        alert('⚠️ Supabase가 연결되어 있지 않습니다.\nindex.html 상단의 SUPABASE_URL과 SUPABASE_KEY를 입력해주세요.');
+        return;
+      }
+      const btn = document.getElementById('saveBtn');
+      btn.disabled   = true;
+      btn.textContent = '⏳ 저장 중...';
+      try {
+        const record = getCurrentSnapshot();
+        const { error } = await supabase.from(TABLE_NAME).insert([record]);
+        if (error) throw error;
+        btn.textContent = '✅ 저장 완료!';
+        setTimeout(() => { btn.disabled = false; btn.innerHTML = '💾 기록 저장'; }, 2000);
+        // 패널이 열려 있으면 즉시 갱신
+        if (!document.getElementById('recordsPanel').classList.contains('hidden')) loadRecords();
+      } catch(e) {
+        alert('❌ 저장 실패: ' + e.message);
+        btn.disabled   = false;
+        btn.innerHTML  = '💾 기록 저장';
+      }
+    }
+
+    /** Supabase에서 기록 목록 불러오기 */
+    async function loadRecords() {
+      const stateEl = document.getElementById('recordsState');
+      const tableWrap = document.getElementById('recordsTableWrap');
+      const tbody     = document.getElementById('recordsTableBody');
+      const countEl   = document.getElementById('recordCount');
+
+      stateEl.textContent = '불러오는 중...';
+      stateEl.classList.remove('hidden');
+      tableWrap.classList.add('hidden');
+
+      if (!supabase) {
+        stateEl.textContent = '⚠️ Supabase가 연결되지 않았습니다. 설정값을 확인해주세요.';
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from(TABLE_NAME)
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100);
+        if (error) throw error;
+
+        countEl.textContent = `(총 ${data.length}건)`;
+
+        if (data.length === 0) {
+          stateEl.textContent = '저장된 기록이 없습니다. 분석 후 [💾 기록 저장]을 눌러보세요.';
+          return;
+        }
+
+        tbody.innerHTML = data.map(r => `
+          <tr class="hover:bg-slate-50 transition">
+            <td class="p-2.5 whitespace-nowrap text-slate-500">${new Date(r.created_at).toLocaleString('ko-KR')}</td>
+            <td class="p-2.5">${r.gender === 'male' ? '남' : '여'}</td>
+            <td class="p-2.5">${r.age}세</td>
+            <td class="p-2.5">${r.height_cm}cm</td>
+            <td class="p-2.5 font-bold">${r.weight_kg}</td>
+            <td class="p-2.5 text-blue-700 font-bold">${r.smm_kg}</td>
+            <td class="p-2.5 text-rose-600 font-bold">${r.pbf_pct}%</td>
+            <td class="p-2.5">${r.bmi}</td>
+            <td class="p-2.5">${r.vfl_level} Lv</td>
+            <td class="p-2.5 font-bold">${r.inbody_score}점</td>
+            <td class="p-2.5">
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                r.cid_type === 'C' ? 'bg-amber-100 text-amber-800' :
+                r.cid_type === 'D' ? 'bg-blue-100 text-blue-800' :
+                'bg-emerald-100 text-emerald-800'
+              }">${r.cid_type}자형</span>
+            </td>
+            <td class="p-2.5 text-center">
+              <button onclick='restoreRecord(${JSON.stringify(r)})' class="px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition">불러오기</button>
+            </td>
+            <td class="p-2.5 text-center">
+              <button onclick="deleteRecord('${r.id}')" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-600 hover:bg-rose-200 transition">삭제</button>
+            </td>
+          </tr>
+        `).join('');
+
+        stateEl.classList.add('hidden');
+        tableWrap.classList.remove('hidden');
+      } catch(e) {
+        stateEl.textContent = '❌ 불러오기 실패: ' + e.message;
+      }
+    }
+
+    /** 저장 기록 삭제 */
+    async function deleteRecord(id) {
+      if (!confirm('이 기록을 삭제하시겠습니까?')) return;
+      try {
+        const { error } = await supabase.from(TABLE_NAME).delete().eq('id', id);
+        if (error) throw error;
+        loadRecords();
+      } catch(e) {
+        alert('❌ 삭제 실패: ' + e.message);
+      }
+    }
+
+    /** 저장된 기록을 화면에 복원 */
+    function restoreRecord(r) {
+      document.getElementById('gender').value          = r.gender;
+      document.getElementById('age').value             = r.age;
+      document.getElementById('height').value          = r.height_cm;
+      document.getElementById('weight').value          = r.weight_kg;
+      document.getElementById('smm').value             = r.smm_kg;
+      document.getElementById('bfm').value             = r.bfm_kg;
+      document.getElementById('bfmInputSync').value    = r.bfm_kg;
+      document.getElementById('score').value           = r.inbody_score;
+      document.getElementById('vfl').value             = r.vfl_level;
+      document.getElementById('tbw').value             = r.tbw_l;
+      document.getElementById('protein').value         = r.protein_kg;
+      document.getElementById('mineral').value         = r.mineral_kg;
+      document.getElementById('armR').value            = r.arm_r_kg;
+      document.getElementById('armL').value            = r.arm_l_kg;
+      document.getElementById('trunk').value           = r.trunk_kg;
+      document.getElementById('legR').value            = r.leg_r_kg;
+      document.getElementById('legL').value            = r.leg_l_kg;
+      calculate();
+      // 패널 닫기
+      document.getElementById('recordsPanel').classList.add('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    /** 기록 목록 패널 토글 */
+    function toggleRecordsPanel() {
+      const panel = document.getElementById('recordsPanel');
+      panel.classList.toggle('hidden');
+      if (!panel.classList.contains('hidden')) loadRecords();
+    }
+
+    // ───────────────────────────────────────────
+    // 초기 실행
+    // ───────────────────────────────────────────
     calculate();
+    checkDbConnection();
   </script>
 </body>
 </html>
