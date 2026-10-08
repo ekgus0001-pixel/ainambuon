@@ -8,6 +8,8 @@
 
 > **InBody 280 결과 분석을 디지털화하고, 체성분 유형과 운동관리 우선도를 신속하게 선별하는 웹 기반 스마트 헬스케어 솔루션**
 
+🌐 **웹 브라우저 바로가기 (배포 링크)**: **[https://ekgus0001-pixel.github.io/ainambuon/](https://ekgus0001-pixel.github.io/ainambuon/)**
+
 ---
 
 ## 📌 프로젝트 소개 (Overview)
